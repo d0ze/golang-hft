@@ -64,8 +64,3 @@ const (
 	ETHUSD  Market = "ETHUSD"
 	LTCEUR  Market = "LTCEUR"
 )
-
-const (
-	TWAP    Strategy = "twap"
-	CHATGPT Strategy = "cgpt"
-)

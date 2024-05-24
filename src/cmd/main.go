@@ -18,14 +18,13 @@ func main() {
 
 	internal.InitConfig()
 	internal.InitLogging()
-	internal.InitDb()
 	strategies := map[string]strategy.IStrategy{
 		"simple": strategy.NewSimpleStrategy(),
 	}
 
 	// init broker
 	exchange.InitClient()
-	markets := []internal.Market{internal.ETHEUR}
+	markets := internal.Config.GetMarkets()
 	data, err := exchange.KrakenCli.GetMarketsData(markets)
 	if err != nil {
 		logrus.Warnf("[MAIN] couldnt retrieve market data (reason: %v), exiting", err)
@@ -43,9 +42,9 @@ func main() {
 	for _, market := range markets {
 		var ticks chan entities.Candle
 		trend := entities.InitTrend(market)
-		timeframes := strings.Split(internal.Config.OHLCIntervals, "#")
-		logrus.Infof("timeframes %v", timeframes)
-		for _, tf := range strings.Split(internal.Config.OHLCIntervals, "#") {
+		timeframes := strings.Split(internal.Config.OHLCIntervals, "-")
+		logrus.Infof("[MAIN] selected timeframes %v", timeframes)
+		for _, tf := range timeframes {
 			// get ohlc for each timeframe
 			timeframe, _ := strconv.ParseInt(tf, 10, 16)
 			logrus.Infof("[MAIN] retrieving candles for timeframe %dm", timeframe)

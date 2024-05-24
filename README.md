@@ -1,6 +1,6 @@
 # High frequency trader
 
-This repo contains a bot and the tools to trade algorithmically on a market exchange.
+This repo contains a framework to trade algorithmically on a market exchange.
 
 It is written in golang, with docker support to run it.
 
@@ -25,5 +25,33 @@ which will check if is profitable to open any new position, or close an open one
 order to be submitted, which the overlying goroutine will send to another channel, consumed from the order sender
 
 
+## Available Indicators
 
+- TWAP
+- SMA
+- BB
+- SMI
 
+## Available Markets
+
+### Kraken
+
+- XBTEUR
+- XBTUSD 
+- XBTUSDT
+- ETHEUR 
+- ETHUSD 
+- LTCEUR 
+
+## Configuration
+
+The following environment variables can be set to configure the application
+
+- LOG_LEVEL (trace, debug, info, warning, error, default=info)
+- KRAKEN_API_KEY - kraken api key
+- KRAKEN_SECRET - kraken api secret
+- OHLC_INTERVALS - which timeframes (in minutes) to consider in the run (dash separated list, defined in minutes, default=1-60)
+- OHLC_SIZE - how many candles to keep for every timeframe (default=60)
+- STRATEGY - strategy to run
+- STRATEGY_INTERVAL_CHECK - for which candles timeframe (in minutes) the strategy will check for open/close orders (default=1)"`
+- MARKETS - which markets to consider (dash separated list, default=ETHEUR-XBTEUR)

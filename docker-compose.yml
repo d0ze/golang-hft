@@ -1,7 +1,7 @@
 version: "3"
 
 services:
-  bridge:
+  bot:
     restart: 'always'
     build:
       context: .
@@ -15,6 +15,7 @@ services:
       KRAKEN_API_KEY: ${KRAKEN_API_KEY}
       KRAKEN_SECRET: ${KRAKEN_SECRET}
       STRATEGY: ${STRATEGY:-simple}
+      MARKETS: ${MARKETS:-ETHEUR}
 
 
   

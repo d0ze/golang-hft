@@ -32,13 +32,13 @@ func CheckVolume(order *entities.Order) bool {
 func buildOpenOrder(
 	market internal.Market,
 	side internal.OrderSide,
-	freeMargin decimal.Decimal,
+	volume decimal.Decimal,
 	price decimal.Decimal) *entities.Order {
 	return &entities.Order{
 		Id:            uuid.New().String(),
 		Type:          internal.MARGIN,
 		PriceType:     internal.MARKET,
-		InitialVolume: decimal.RequireFromString(freeMargin.Div(price).StringFixed(int32(entities.Markets.GetDecimals(market)))),
+		InitialVolume: volume,
 		Side:          side,
 		Status:        internal.CREATED,
 		Market:        market,
