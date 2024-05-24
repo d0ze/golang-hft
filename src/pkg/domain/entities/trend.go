@@ -25,16 +25,17 @@ type ITrend interface {
 	Update(new Candle, timeframe int)
 	// returns the time-weighted avg price of the last
 	// 12 candles
-	GetTwap(timeframe int) decimal.Decimal
+	GetTwap(timeframe int) *decimal.Decimal
 	// return the candle at the given position
 	GetCandle(position int, timeframe int) Candle
 	// return all the latest candles
 	GetCandles(timeframe int) *[]Candle
 	// returrns the trend market
 	GetMarket() internal.Market
-	GetSMA(period int, timeframe int) decimal.Decimal
-	GetRSI(period int, timeframe int) decimal.Decimal
-	GetBB(period int, stdDev float64, timeframe int) (decimal.Decimal, decimal.Decimal, decimal.Decimal)
+	GetSMA(period int, timeframe int) *decimal.Decimal
+	GetRSI(period int, timeframe int) *decimal.Decimal
+	GetBB(period int, stdDev float64, timeframe int) (*decimal.Decimal, *decimal.Decimal, *decimal.Decimal)
+	GetMACD(fastPeriod int, slowPeriod int, signalPeriod int, timeframe int) (*decimal.Decimal, *decimal.Decimal)
 }
 
 type trend struct {
@@ -52,100 +53,137 @@ func InitTrend(market internal.Market) ITrend {
 }
 
 func (t *trend) Update(new Candle, timeframe int) {
-	candles := *t.timeframes[Timeframe(timeframe)]
-	if len(candles) == internal.Config.OHLCSize {
-		candles = candles[1:]
+	candles := t.GetCandles(timeframe)
+	if len(*candles) >= internal.Config.OHLCSize {
+		*candles = (*candles)[1:]
 	}
-	candles = append(candles, new)
-	t.timeframes[Timeframe(timeframe)] = &candles
+	*candles = append(*candles, new)
 }
 
-// returns the time weighted average price of the trend
-func (t *trend) GetTwap(timeframe int) decimal.Decimal {
-	candles := *t.GetCandles(timeframe)
-	if len(candles) == 0 {
-		return decimal.Zero
+func (t *trend) GetTwap(timeframe int) *decimal.Decimal {
+	candles := t.GetCandles(timeframe)
+	if len(*candles) == 0 {
+		return nil
 	}
 	precision := Markets.GetDecimals(t.market)
 	var sumWeightedPrice decimal.Decimal
-	var totalTimeWeight int // Total time weight (sum of time intervals)
+	var totalTimeWeight int
 
-	// Iterate over the last n candles (or available candles if less than n)
-	for _, candle := range candles {
-		duration := time.Since(candle.Timestamp).Minutes() // Calculate duration in minutes
+	for _, candle := range *candles {
+		duration := time.Since(candle.Timestamp).Minutes()
 		priceWeight := candle.Close.Mul(decimal.NewFromFloat(duration))
 		sumWeightedPrice = sumWeightedPrice.Add(priceWeight)
 		totalTimeWeight += int(duration)
 	}
 
 	if totalTimeWeight == 0 {
-		return decimal.Zero
+		return nil
 	}
 
-	return utils.MarketPrecision(sumWeightedPrice.Div(decimal.NewFromInt(int64(totalTimeWeight))), precision)
+	twap := utils.MarketPrecision(sumWeightedPrice.Div(decimal.NewFromInt(int64(totalTimeWeight))), precision)
+	return &twap
 }
 
-// SMA calculates the Simple Moving Average over a specified period
-func (t *trend) GetSMA(period int, timeframe int) decimal.Decimal {
-	res := decimal.Zero
-	precision := Markets.GetDecimals(t.market)
-	candles := *t.GetCandles(timeframe)
-	for _, candle := range candles {
-		res = res.Add(candle.Close)
+func (t *trend) GetSMA(period int, timeframe int) *decimal.Decimal {
+	candles := t.GetCandles(timeframe)
+	if len(*candles) < period {
+		return nil
 	}
-	return utils.MarketPrecision(res.Div(decimal.NewFromInt(int64(len(candles)))), precision)
+
+	sum := decimal.Zero
+	for _, candle := range (*candles)[len(*candles)-period:] {
+		sum = sum.Add(candle.Close)
+	}
+	sma := sum.Div(decimal.NewFromInt(int64(period)))
+	r := utils.MarketPrecision(sma, Markets.GetDecimals(t.market))
+	return &r
 }
 
-// RSI calculates the Relative Strength Index over a specified period
-func (t *trend) GetRSI(period int, timeframe int) decimal.Decimal {
-	candles := *t.GetCandles(timeframe)
-	if len(candles) < period {
-		return decimal.Zero
+func (t *trend) GetRSI(period int, timeframe int) *decimal.Decimal {
+	candles := t.GetCandles(timeframe)
+	if len(*candles) < period+1 {
+		return nil
 	}
-	gain := decimal.Zero
-	loss := decimal.Zero
 
-	for i := 1; i < period+1; i++ {
-		change := candles[i].Close.Sub(candles[i-1].Close)
+	gains := decimal.Zero
+	losses := decimal.Zero
+
+	for i := 1; i <= period; i++ {
+		change := (*candles)[len(*candles)-i].Close.Sub((*candles)[len(*candles)-i-1].Close)
 		if change.GreaterThan(decimal.Zero) {
-			gain = gain.Add(change)
+			gains = gains.Add(change)
 		} else {
-			loss = loss.Add(change.Abs())
+			losses = losses.Add(change.Abs())
 		}
 	}
 
-	averageGain := gain.Div(decimal.NewFromInt(int64(period)))
-	averageLoss := loss.Div(decimal.NewFromInt(int64(period)))
+	averageGain := gains.Div(decimal.NewFromInt(int64(period)))
+	averageLoss := losses.Div(decimal.NewFromInt(int64(period)))
 
 	if averageLoss.IsZero() {
-		// Prevent division by zero
-		return decimal.NewFromInt(100)
+		averageLoss = decimal.NewFromFloat(1.0)
 	}
 
 	rs := averageGain.Div(averageLoss)
 	rsi := decimal.NewFromInt(100).Sub(decimal.NewFromInt(100).Div(decimal.NewFromInt(1).Add(rs)))
 
-	return rsi
+	return &rsi
 }
 
-// BB calculates the Bollinger Bands (middle, upper, lower) over a specified period and standard deviation
-func (t *trend) GetBB(period int, stdDev float64, timeframe int) (decimal.Decimal, decimal.Decimal, decimal.Decimal) {
+func (t *trend) GetBB(period int, stdDev float64, timeframe int) (*decimal.Decimal, *decimal.Decimal, *decimal.Decimal) {
 	sma := t.GetSMA(period, timeframe)
-	if sma.IsZero() {
-		return decimal.Zero, decimal.Zero, decimal.Zero
+	if sma == nil {
+		return nil, nil, nil
+	}
+
+	candles := t.GetCandles(timeframe)
+	var sumSqDiff decimal.Decimal
+	for _, candle := range *candles {
+		diff := candle.Close.Sub(*sma)
+		sumSqDiff = sumSqDiff.Add(diff.Mul(diff))
+	}
+	variance := sumSqDiff.Div(decimal.NewFromInt(int64(period)))
+	stdDeviation := decimal.NewFromFloat(math.Sqrt(variance.InexactFloat64()))
+
+	upperBand := sma.Add(stdDeviation.Mul(decimal.NewFromFloat(stdDev)))
+	lowerBand := sma.Sub(stdDeviation.Mul(decimal.NewFromFloat(stdDev)))
+	precision := Markets.GetDecimals(t.market)
+	r1, r2, r3 := utils.MarketPrecision(upperBand, precision), utils.MarketPrecision(lowerBand, precision), utils.MarketPrecision(*sma, precision)
+	return &r1, &r2, &r3
+}
+
+func (t *trend) GetMACD(fastPeriod int, slowPeriod int, signalPeriod int, timeframe int) (*decimal.Decimal, *decimal.Decimal) {
+	candles := *t.GetCandles(timeframe)
+	if len(candles) < slowPeriod {
+		return nil, nil
 	}
 	precision := Markets.GetDecimals(t.market)
 
-	var sumSqDiff decimal.Decimal
-	for _, candle := range *t.GetCandles(timeframe) {
-		diff := candle.Close.Sub(sma)
-		sumSqDiff = sumSqDiff.Add(diff.Mul(diff))
+	emaFast := calculateEMA(candles, fastPeriod)
+	emaSlow := calculateEMA(candles, slowPeriod)
+	macd := emaFast.Sub(emaSlow)
+	macdSignal := calculateSignalLine(macd, signalPeriod)
+
+	r1, r2 := utils.MarketPrecision(macd, precision), utils.MarketPrecision(macdSignal, precision)
+	return &r1, &r2
+}
+
+func calculateEMA(candles []Candle, period int) decimal.Decimal {
+	k := decimal.NewFromFloat(2.0 / float64(period+1))
+	ema := candles[0].Close
+	for i := 1; i < len(candles); i++ {
+		ema = candles[i].Close.Mul(k).Add(ema.Mul(decimal.NewFromInt(1).Sub(k)))
 	}
-	stdDeviationF, _ := decimal.NewFromFloat(stdDev).Mul(decimal.NewFromInt(int64(period))).Float64()
-	stdDeviation := decimal.NewFromFloat(math.Sqrt(stdDeviationF))
-	upperBand := sma.Add(stdDeviation)
-	lowerBand := sma.Sub(stdDeviation)
-	return utils.MarketPrecision(sma, precision), utils.MarketPrecision(upperBand, precision), utils.MarketPrecision(lowerBand, precision)
+	return ema
+}
+
+func calculateSignalLine(macd decimal.Decimal, period int) decimal.Decimal {
+	k := decimal.NewFromFloat(2.0 / float64(period+1))
+	signal := macd
+	for i := 1; i < period; i++ {
+		signal = macd.Mul(k).Add(signal.Mul(decimal.NewFromInt(1).Sub(k)))
+	}
+	return signal
 }
 
 func (t *trend) GetCandle(position int, timeframe int) Candle {

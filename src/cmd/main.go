@@ -54,12 +54,13 @@ func main() {
 				logrus.Fatalf("[MAIN] error %v retrieving latest %dm candles", timeframe, err)
 			}
 			for _, candle := range prev[len(prev)-60 : len(prev)-1] {
-				logrus.Infof("[MAIN] loading candle %s", candle.String())
+				logrus.Debugf("[MAIN] loading candle %s", candle.String())
 				trend.Update(candle, int(timeframe))
 			}
+			tfTicks := goro.PollOHLC(market, trend, int(timeframe), &wg)
 			if int(timeframe) == internal.Config.StrategyIntervalCheck {
 				// defines which candle timeframe will tick the strategy check
-				ticks = goro.PollOHLC(market, trend, int(timeframe), &wg)
+				ticks = tfTicks
 			}
 		}
 		orders := goro.Check(stategy, market, trend, ticks, &wg)
