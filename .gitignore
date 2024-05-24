@@ -1,0 +1,6 @@
+node_modules/
+build/
+.env
+bin/*
+src/pkg/strategy/*.go
+!src/pkg/strategy/strategy.go

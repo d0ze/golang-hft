@@ -1,0 +1,20 @@
+version: "3"
+
+services:
+  bridge:
+    restart: 'always'
+    build:
+      context: .
+      dockerfile: ./docker/Dockerfile
+    deploy:
+      resources:
+        limits:
+          cpus: "0.3"
+          memory: 200M
+    environment:
+      KRAKEN_API_KEY: ${KRAKEN_API_KEY}
+      KRAKEN_SECRET: ${KRAKEN_SECRET}
+      STRATEGY: ${STRATEGY:-simple}
+
+
+  
